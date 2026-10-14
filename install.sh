@@ -36,7 +36,7 @@ target_dir() {
   case "$1" in
     zcode)  echo "$HOME/.zcode/skills" ;;
     claude) echo "$HOME/.claude/skills" ;;
-    kimi)   echo "$HOME/.kimi/skills" ;;
+    kimi)   echo "${KIMI_CODE_HOME:-$HOME/.kimi-code}/skills" ;;
     *)      return 1 ;;
   esac
 }
@@ -45,7 +45,7 @@ if [[ -z "$TARGETS" ]]; then
   TARGETS=""
   [[ -d "$HOME/.zcode"  ]] && TARGETS="zcode"
   [[ -d "$HOME/.claude" ]] && TARGETS="${TARGETS:+$TARGETS,}claude"
-  [[ -d "$HOME/.kimi"   ]] && TARGETS="${TARGETS:+$TARGETS,}kimi"
+  [[ -d "${KIMI_CODE_HOME:-$HOME/.kimi-code}" ]] && TARGETS="${TARGETS:+$TARGETS,}kimi"
   if [[ -z "$TARGETS" ]]; then
     echo "No agent environment detected (~/.zcode, ~/.claude, ~/.kimi). Use --target explicitly." >&2
     exit 1

@@ -37,7 +37,7 @@ cd apache-skill-suite
 |---|---|
 | ZCode | `~/.zcode/skills/<skill>/SKILL.md` |
 | Claude CLI | `~/.claude/skills/<skill>/SKILL.md` |
-| Kimi Code | `~/.kimi/skills/<skill>/SKILL.md`（用户级自动发现目录） |
+| Kimi Code | `~/.kimi-code/skills/<skill>/SKILL.md`（用户级自动发现目录） |
 
 ## 跨环境注意事项
 
