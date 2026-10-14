@@ -1,0 +1,4 @@
+[11:48:01] cwd=/Users/arthur/workspace/projects/opensource/kyuubi
+prompt=在 kyuubi 把那个提交一下
+---
+[claude-code:unrecognized_model] {"model":"kimi-for-coding","query_source":"generate_session_title"}

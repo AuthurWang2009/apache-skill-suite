@@ -29,6 +29,18 @@ ZCODE_BIN="${ZCODE_BIN:-/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs
 OUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tests/out/$ENV/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUT_DIR"
 
+run_with_timeout() { # <secs> <cmd...>  (macOS has no `timeout`)
+  local secs="$1"; shift
+  "$@" &
+  local pid=$!
+  ( sleep "$secs" && kill -TERM "$pid" 2>/dev/null ) &
+  local watchdog=$!
+  wait "$pid"; local rc=$?
+  kill -TERM "$watchdog" 2>/dev/null
+  wait "$watchdog" 2>/dev/null
+  return $rc
+}
+
 run_one() { # <cwd> <prompt> <logfile>
   local cwd="$1" prompt="$2" log="$3" t0 t1 rc
   mkdir -p "$cwd" 2>/dev/null || true
@@ -38,15 +50,15 @@ run_one() { # <cwd> <prompt> <logfile>
   t0=$(date +%s)
   case "$ENV" in
     claude)
-      (cd "$cwd" && timeout "$RUN_TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --permission-mode plan) >> "$log" 2>&1
+      run_with_timeout "$RUN_TIMEOUT" bash -c "cd '$cwd' && '$CLAUDE_BIN' -p \"\$0\" --permission-mode plan" "$prompt" >> "$log" 2>&1
       rc=$?
       ;;
     kimi)
-      (cd "$cwd" && timeout "$RUN_TIMEOUT" "$KIMI_BIN" -p "$prompt" --plan) >> "$log" 2>&1
+      run_with_timeout "$RUN_TIMEOUT" bash -c "cd '$cwd' && '$KIMI_BIN' -p \"\$0\"" "$prompt" >> "$log" 2>&1
       rc=$?
       ;;
     zcode)
-      timeout "$RUN_TIMEOUT" node "$ZCODE_BIN" -p "$prompt" --mode plan --cwd "$cwd" >> "$log" 2>&1
+      run_with_timeout "$RUN_TIMEOUT" node "$ZCODE_BIN" -p "$prompt" --mode plan --cwd "$cwd" >> "$log" 2>&1
       rc=$?
       ;;
     *) echo "unknown env $ENV" >&2; exit 1 ;;
