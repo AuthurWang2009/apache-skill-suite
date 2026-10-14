@@ -61,12 +61,19 @@ for target in "${TARGET_LIST[@]}"; do
     dest="$dest_parent/$skill"
     [[ -d "$src" ]] || { echo "Missing source: $src" >&2; exit 1; }
     if [[ "$MODE" == "symlink" ]]; then
+      # keep side-car backups (*.bak*) — they carry the user's migration history
+      for bak in "$dest"/*.bak*; do [[ -e "$bak" ]] && mv "$bak" "$dest_parent/.keep-$(basename "$bak")"; done
       rm -rf "$dest"
       ln -s "$src" "$dest"
+      for keep in "$dest_parent"/.keep-*.bak*; do [[ -e "$keep" ]] && mv "$keep" "$dest/$(basename "$keep" | sed 's/^\.keep-//')"; done
       echo "[ $target ] symlinked $skill -> $src"
     else
+      for bak in "$dest"/*.bak*; do [[ -e "$bak" ]] && cp "$bak" "$REPO_ROOT/.tmp-bak-$skill-$RANDOM" ; done
       rm -rf "$dest"
       cp -R "$src" "$dest"
+      for tmpbak in "$REPO_ROOT"/.tmp-bak-$skill-*; do
+        [[ -e "$tmpbak" ]] && mv "$tmpbak" "$dest/$(basename "$tmpbak" | sed "s/^\.tmp-bak-$skill-//")"
+      done
       echo "[ $target ] copied     $skill"
     fi
   done
