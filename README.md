@@ -58,7 +58,7 @@ cd apache-skill-suite
 ./tests/b4-matrix.sh zcode    # 或 claude / kimi
 ```
 
-矩阵定义与判定标准见 `docs/b4-matrix.md`，历次结果见 `docs/results/`。
+矩阵定义与判定标准见 `docs/b4-matrix.md`，历次结果见 `docs/results/`（首份：`2026-10-14-cross-env.md`，claude 7/7、kimi 带 skill 6+1PARTIAL、zcode 发现级通过）。
 
 ## 版本
 

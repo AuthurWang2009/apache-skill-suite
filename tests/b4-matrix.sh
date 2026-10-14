@@ -29,15 +29,23 @@ ZCODE_BIN="${ZCODE_BIN:-/Applications/ZCode.app/Contents/Resources/glm/zcode.cjs
 OUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tests/out/$ENV/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUT_DIR"
 
+kill_tree() { # <pid> — TERM a pid and all its descendants
+  local p="$1" c
+  for c in $(pgrep -P "$p" 2>/dev/null); do kill_tree "$c"; done
+  kill -TERM "$p" 2>/dev/null
+}
+
 run_with_timeout() { # <secs> <cmd...>  (macOS has no `timeout`)
   local secs="$1"; shift
   "$@" &
   local pid=$!
-  ( sleep "$secs" && kill -TERM "$pid" 2>/dev/null ) &
+  ( sleep "$secs" && kill_tree "$pid" ) &
   local watchdog=$!
   wait "$pid"; local rc=$?
   kill -TERM "$watchdog" 2>/dev/null
   wait "$watchdog" 2>/dev/null
+  # belt and braces: ensure the whole child tree is gone even on normal exit
+  kill_tree "$pid"
   return $rc
 }
 
