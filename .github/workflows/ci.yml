@@ -1,0 +1,76 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  lint:
+    name: Shellcheck + skill frontmatter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          # shellcheck everything; scripts rely on bash features
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          find . -name '*.sh' -not -path './.git/*' -print0 | xargs -0 shellcheck
+      - name: skill frontmatter validation
+        run: |
+          python3 - << 'EOF'
+          import glob, re, sys
+
+          failures = []
+          for path in sorted(glob.glob("skills/*/SKILL.md")):
+              text = open(path).read()
+              m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+              if not m:
+                  failures.append(f"{path}: no frontmatter block")
+                  continue
+              fm = m.group(1)
+              if not re.search(r"^name:\s*\S", fm, re.M):
+                  failures.append(f"{path}: missing name")
+              dm = re.search(r"^description:\s*(.*)", fm, re.M)
+              if not dm:
+                  failures.append(f"{path}: missing description")
+              else:
+                  lines = fm.split("\n")
+                  i = next(k for k, l in enumerate(lines) if l.startswith("description:"))
+                  desc = lines[i][len("description:"):].strip()
+                  j = i + 1
+                  while j < len(lines) and (lines[j].startswith((" ", "\t")) or lines[j] == ""):
+                      desc += " " + lines[j].strip()
+                      j += 1
+                  if len(desc) > 1024:
+                      failures.append(f"{path}: description {len(desc)} chars > 1024 (host drops the skill)")
+                  if "Use ONLY when BOTH" not in desc and "Use whenever" not in desc:
+                      failures.append(f"{path}: description lacks front-loaded trigger conditions")
+          if failures:
+              print("\n".join(failures))
+              sys.exit(1)
+          print(f"frontmatter OK: {len(glob.glob('skills/*/SKILL.md'))} skills")
+          EOF
+      - name: license presence
+        run: |
+          test -f LICENSE
+          grep -q "Apache License" LICENSE
+          # every shell script must carry the ALv2 header
+          for f in $(find . -name '*.sh' -not -path './.git/*'); do
+            head -20 "$f" | grep -q "Apache License" || { echo "missing ALv2 header: $f"; exit 1; }
+          done
+          echo "license checks OK"
