@@ -21,354 +21,329 @@ when_to_use: >-
   non-Apache repositories, or fork-upstream syncing (apache-sync-fork).
 ---
 
-# apache-commit-pr — Apache 通用提交 / PR 规范内核
+# Apache Commit & PR Compliance Kernel
 
-> **定位**：个人级通用 skill。本 skill 管 **commit/PR 时点的规范内核**（远端识别、标题
-> 模板框架、门禁框架、PR 模板框架、CI 解读、ASF 合规、硬护栏）；端到端任务编排
-> （找 issue → 分支 → 验证 → review → 收尾）归同族 `apache-dev-workflow`；fork↔upstream
-> 分支同步归 `apache-sync-fork`（其同步集自包含，不读本套件规则包）。两个通用 skill 同意图
-> 双触发时经 Step 0 会话内去重收敛——谁先触发，行为一致。
-> **一切仓库特定值（标题格式 / 默认分支 / 门禁命令 / 模板段 / label 词汇……）来自
-> 规则包；本正文不含任何仓库规则性事实。**
-> **标注体系**：[MECH] = GitHub/gh 引擎机制（与仓库无关）；[ASF] = Apache 软件基金会
-> 全项目政策；[USER] = 用户协作约定（user rule, stricter than community norms）。
-> **反闭门造车原则**（用户裁决 2026-10-13）：写死的仅限"非常确定"的三级内容——引擎
-> 机制 / 基金会政策 / 用户政策；一切项目事实优先在运行时从已 clone 的仓库现读（项目
-> 文档 / git 变更摘要与记录 / CI 配置），cache 即现读结果的持久化，miss 当场派生。
+A personal-level, repository-generic skill that governs the commit/PR moment in any Apache Software Foundation repository: remote identification, title and PR-template frameworks, gate frameworks, CI interpretation, ASF compliance, and hard guardrails. It loads — or mines — a per-repository rule pack (`.zcode/rules/<project>.md`) before any commit or PR action, and never guesses or borrows another repository's rules.
 
-## Step 0 — Load the repository rule pack（MANDATORY — before any other step）
+## Scope, Tags, and Core Principles
 
-**会话内去重**：本会话已加载过本仓规则包或已有挖掘结果 → 直接复用，不重复读取 /
-挖掘 / 二次请批（双 skill 触发的动作收敛）。
+**Division of labor:**
 
-0. **让渡前置检查（先于一切读取）**：若本会话的技能发现列表中存在本仓库自包含的
-   同意图项目级 skill（迁移前旧形态），**完全让渡**——不读包、不挖掘、不 bootstrap，
-   由该旧 skill 主导全部行为。判定基准 = **技能发现列表**（归档目录不在发现路径内，
-   故旧 skill 归档后让渡自动解除）。
-1. **上游识别链**（[MECH] 级程序——识别是程序不是常量；按 URL，绝不按远端名）：
-   a. `git remote -v`：存在指向 `github.com/apache/<project>` 的远端 → 官方远端，
-      `<project>` 即规则包键（快路径，覆盖主场景）。
-   b. 未命中且 origin 是 GitHub 仓 → **fork 血缘 API（权威兜底，匿名可用）**：
-      `GET api.github.com/repos/<owner>/<repo>` → `.fork=true` 时官方仓库 =
-      `.source.full_name`（**嵌套 fork 取 source 而非 parent**——source 是 fork 网络
-      的根）；本地已有指向它的远端则用之，没有则告知用户可自行 `git remote add`
-      （不自动添加）。
-   c. **归属判断（独立于识别）**：官方仓库属 `apache/` 组织**或**仓库含 `.asf.yaml`
-      → ASF 项目，启用内核合规清单（ALv2/ICLA/PR-first）；非 apache 组织 → **同一
-      骨架照用，ASF 专属合规项按 N/A 处理**并声明哪些规范不适用（不装死不硬拒；
-      此为显式斜杠调用时的正文级降级路径，不在触发域内）。
-   d. 均失败（非 GitHub 托管 / 血缘缺失）→ 询问用户，不猜。
-2. **立即完整读取** `<repo-root>/.zcode/rules/<project>.md`（完整读取，不跳读）：
-   **G 层** = 通用内核规则快照（抗跳读冗余——skill 正文永远权威）；**P 层** = 项目
-   CI/CD 规则缓存。**P-cache 命中且未失效 → 直接使用，无须再次采集**，并呈报一行
-   来源（如 `cache 命中 · verified <日期> · 来源 .zcode/rules/<project>.md`）。
-3. **包/缓存缺失**（新仓、首次执行、fresh clone——**正常态而非错误**）：先查个人母本
-   `~/.zcode/rules/<project>.md` 恢复（≤1 次批准，≤5 分钟）；仍缺失则**当场执行本文
-   「内联挖掘程序」**（只读、分钟级）：结果直接用于当前任务，并经用户批准写入 cache
-   供下次直用——首次执行即"采集并缓存"的过程，任务不被阻断。用户拒绝落 cache =
-   本次仅使用不落盘，下次 miss 再问（不设持久抑制状态）。**DO NOT guess or borrow
-   another repository's rules — not even partially**（禁止的是"不挖掘就猜/借"；挖掘
-   本身就是反猜测机制）；挖掘仍定不了的字段 → 通用默认 + 询问用户。
-4. **cache 失效判定**（时间 + 事件双触发；**判定前先 `git fetch <upstream> --prune`**
-   ——fetch 属免批准的只读操作）：`verified` 头超 90 天；或 CI 工件（workflows / lint
-   配置 / 模板 / .asf.yaml）自 `verified` 后有变更 → 包级重挖（纪律见「内联挖掘程序
-   ·失效重挖」）。
-5. **冲突裁决序**：**[USER] 政策层（不可被覆盖，仅用户显式豁免可解除）> P 层项目事实
-   > skill 正文（非 [USER] 内核）> G 层快照**。P 层对 [USER] 政策只能记录偏差事实并
-   呈报用户（例："社区近期 merged PR 样本多数不用 close 关键字"是偏差事实，不得据此
-   推翻用户"无 issue 不开 PR"政策），不得覆盖；upstream 自己的 AGENTS.md / 模板与包
-   冲突时同样呈报用户裁决，**禁止静默择一**。
-6. **schema 降级**：包的 schema-version 不认识 = 按"缺失"降级处理（走第 3 条），结果
-   仅内存使用，**不覆写原包**，并呈报用户（防跨机版本乒乓）。
+- End-to-end task orchestration (find issue → branch → verify → review → wrap up) belongs to the sibling skill `apache-dev-workflow`.
+- fork↔upstream branch syncing belongs to `apache-sync-fork`; its sync set is self-contained and does not read this suite's rule packs.
+- When both generic skills trigger on the same intent, Step 0's session-level dedup converges them: whoever triggers first, the behavior is identical.
 
-## 写死层（仅此三级，逐条标注置信依据）
+**No repository facts live in this body.** Every repo-specific value — title format, default branch, gate commands, template sections, label vocabulary, and so on — comes from the rule pack.
 
-### [USER] 用户政策（user rule, stricter than community norms）
+**Tier tags** (every rule below carries its tier as its confidence basis):
 
-1. **批准门控**：一切 git/gh 写操作须经当会话用户明确批准——**字面全拦**
-   （2026-10-13 仲裁）：本地 commit、push、PR/issue/评论写、规则包 cache 落盘、
-   CI rerun 全部在内；免批准集合仅限只读操作（见下）。批准的形态 = 用户当会话的
-   **明确指令**或对**批准卡的明确答复**；指令覆盖范围以字面为准，含混时收窄解释
-   （如"提交一下"默认只覆盖本地 commit，push/PR 另出批准卡）。
-   - **批准卡五要素**（全仓统一模板）：① 待批**命令原文逐字**；② **风险**一句话；
-     ③ **任务号**（有 issue = `issue #N`；无 issue 的运维场景 = 任务日志条目 ID，
-     如 `<分支或主题>-<日期>`）；④ **替代选项**（≥2 个）；⑤ **30min 未批 → park**
-     （挂起 + 摘要保留，随时恢复，不自动重试）。
-   - **减压阀 = "这轮都批"**（对话化的会话作用域范围授权，如用户分条指令"2、3 条
-     改了推上去"）：授权范围内不再逐条请批，但远端写逐条留痕任务日志；**远端写
-     永不进永久免批**。
-   - 批准门只认会话不认来路：经用户配置的 Bot Channel（不写死信道名）到达的批准
-     = 会话内批准；执行者恒为桌面会话（Bot Channel 是其远程界面；桌面 app 在线是
-     前提，见诚实限制节）。
-   - 事件等待（等 CI 完成 / 等 review 到达）无超时；**等批准**才有 30min park。
-   - 免批准只读集合：`git fetch <upstream> --prune`、gh 读取类命令、匿名 API、
-     「内联挖掘程序」的全部输入操作。
-2. **无 issue 不开 PR**（用户裁决 2026-10-13：**完全不豁免**）：一切 PR 从 issue 起步
-   ——含 typo、doc、follow-up；follow-up 场景原 issue 已关闭时，新建或 reopen issue
-   引用原 PR 起步。**零例外**。关联通道（正文 `close #N` 关键字还是标题带 issue 号）
-   由规则包 issue-link-channel 轴分派，本条不指定通道；P 层记录的社区偏差事实只
-   呈报、不适用。
-3. **AI 披露**（用户裁决 2026-10-13）：PR 正文自愿附加 `Assisted-by: <模型名称:版本号>`
-   （如 `Assisted-by: ZCode:GLM-5.3`）。规则包 template 节记载项目模板有无 AI 段：
-   有则填入该段，无则自愿附加。永不将 AI 列为 co-author；源码/注释/标题/commit
-   message 中无 AI 自我引用（ASF Generative Tooling Guidance 框架）。
+- `[MECH]` — GitHub/gh engine mechanics, repo-independent.
+- `[ASF]` — Apache Software Foundation policy, common to all projects.
+- `[USER]` — user collaboration policy (user rule, stricter than community norms).
 
-### [MECH] 引擎机制（GitHub/gh 行为，与仓库无关）
+**Anti-reinvention principle.** Only "very certain" content is hardcoded, limited to the three tiers above: engine mechanics, foundation policy, user policy. Every project fact is read at runtime from the already-cloned repository (project docs, git history, CI configs). The cache is nothing more than the persisted result of that reading; a cache miss means "derive it now", never "invent it".
 
-1. **squash 合并语义**：启用 squash 的仓库（ASF 主流形态）中，PR 标题与正文成为
-   merge commit message——**scope 扩大时标题与正文必须同步更新**；分支内各 commit
-   message 不进入最终历史。
-2. **`(#N)` 尾缀 = PR 号**：GitHub squash 自动追加的尾缀（含 backport 双尾缀场景）
-   是 **PR 号**（非 issue 号），**人工永不写**——手写它等于伪造引擎行为。本仓标题
-   具体格式以规则包 title 节为准，但"人工不写 `(#N)`"跨仓不变。
-3. **closing 关键字**：只有 PR **正文**中的 `close/fix/resolve #N` 能自动关闭 issue；
-   **标题里的号 GitHub 不解析**。需要自动关 issue 时，关联必须落在正文（或按包轴
-   分派的等价通道），标题与正文二者不可互换。
-4. **fork = 暂存区**：个人 fork 是唯一 push 目标（与 [ASF] PR-first 互为表里）。fork
-   侧 CI 形态因仓而异（push 直接触发 / 仅 upstream PR 触发 / intra-fork PR 是唯一
-   途径）——**开 intra-fork PR 前必须对照规则包 ci-carrier 轴**：错轨道 = 制造无
-   CI 价值且需手动清理的实体。
-5. **CI 排查命令模式**：`gh run list -R <repo> -b <branch> -L 5` → `gh run view
-   <run-id> -R <repo> --log-failed`（必要时 `-j <job-id>` 下钻单 job）。失败**五态
-   分类**（每 job 一行"态 + 依据 + 行动"，无依据不得断言）：
-   - **真 bug**：失败定位到本次 diff 涉及的模块/测试 → 回修复循环；
-   - **环境**：基础设施/网络/依赖拉取类失败 → 观察或重跑；
-   - **flaky**：判定程序弱，措辞降级——"**疑似 flaky → 批准 rerun 验证**"（样本
-     积累后再议升格）；
-   - **未跑**（首贡献待批准链）：识别 waiting 状态 → 走解锁链（草拟请求批准评论，
-     出批准卡）；
-   - **规范门禁**（lint/license 类）：**不可 rerun 救** → 必须改代码/补头，回门禁
-     清单。
-   rerun 属写操作：出批准卡（可入"这轮都批"）。
+## Step 0: Load the Repository Rule Pack (Mandatory)
 
-### [ASF] 基金会级政策
+Run this before any other step.
 
-1. **PR-first 贡献流**：个人永不 push 官方仓（`github.com/apache/<project>`，无论
-   远端名）；一切变更经 PR + review。
-2. **ALv2**：新文件带 Apache-2.0 license 头（从仓内任一既有文件复制）；license
-   检查工具可能扫描 gitignored 本地文件——私有文件勿放仓库根。
-3. **ICLA 政策框架**：偶尔 PR 无需 ICLA（ALv2 clause 5）；持续实质贡献 / committer
-   提名前签署（个人邮箱，与 git config 邮箱一致）。
-4. **issue 礼仪默认值**：先搜后建、评论认领（"taking this"；非 committer 不能
-   self-assign）；仓内有更具体礼仪时以规则包为准。
-5. **安全漏洞改道（硬分支）**：发现安全漏洞（RCE/认证绕过类）→ **中止一切公开
-   流程**——不建 issue、不开 PR、不在公开评论描述漏洞细节；改走规则包 routing 节
-   的私密渠道；包缺失时按 ASF 默认私密渠道推断并**标注"未证实"**（错地址 = 漏洞
-   报告丢失，不对称风险，待考证收口）。
+**Session dedup:** if this session has already loaded this repository's rule pack, or already holds mining results, reuse them — no re-reading, no re-mining, no second approval request. This is what converges a double trigger from the sibling skills.
 
-### 硬护栏（Hard guardrails——标准文案，全仓一致）
+### Deference pre-check (before any reading)
 
-灾难级规则分层兜底：规则包 guardrails 置顶节 → 结构化门（见「规范自检与证据链卡」）
-→（若在）仓内本地 AGENTS.md 指针 → 批准门控最后背书。
+If the session's skill discovery list contains a self-contained, same-intent project-level skill for this repository (the pre-migration legacy form), defer to it completely: do not read the pack, do not mine, do not bootstrap — the legacy skill leads all behavior. The skill discovery list is the sole basis for this judgment (archive directories are outside the discovery path, so archiving the legacy skill automatically lifts the deferral).
 
-- NEVER push to the official Apache remote（`github.com/apache/<project>`，whatever
-  it is named）. PRs only — the personal fork is the only staging area.
-- NEVER open an upstream PR without a linked issue（user rule，2026-10-13：zero
-  exceptions——typo/doc/follow-up 一律从 issue 起步；原 issue 已关则新建/reopen
-  issue 引用原 PR）. 关联通道按规则包轴分派。
-- NEVER hand-write the `(#N)` title suffix——GitHub squash 自动追加的是 PR 号。
-- NEVER force-push 共享分支（对自己协调过的 PR 分支 force-push 可接受）。
-- NEVER commit 凭据、IDE 文件、构建产物、日志及其他私有工件；新文件带 Apache-2.0 头。
-- NO git/gh write operation without explicit approval in the current session（批准卡
-  五要素；"这轮都批"是会话作用域减压阀，远端写永不进永久免批）。
+### Upstream identification chain
 
-## Honest limitations（残余风险，均已接受）
+[MECH]-level procedure — identification is a procedure, not a constant. Identify by URL, never by remote name.
 
-本套件依赖概率触发与本地文件读取，以下残余风险已知且被用户接受（2026-10-13）：
+- **a. Fast path (covers the main scenario).** Run `git remote -v`. A remote pointing to `github.com/apache/<project>` is the official remote, and `<project>` is the rule pack key.
+- **b. Fork lineage API (authoritative fallback, works anonymously).** If (a) misses and `origin` is a GitHub repository, call `GET api.github.com/repos/<owner>/<repo>`. When `.fork=true`, the official repository is `.source.full_name` — for nested forks take `source`, not `parent`, because `source` is the root of the fork network. If a local remote already points to it, use that remote; otherwise tell the user they may run `git remote add` themselves. Never add the remote automatically.
+- **c. Attribution (independent of identification).** The official repository is in the `apache/` organization, or the repository contains `.asf.yaml` → ASF project: enable the kernel compliance checklist (ALv2 / ICLA / PR-first). If the organization is not `apache`, keep the same skeleton, treat the ASF-specific compliance items as N/A, and state explicitly which norms do not apply — do not go silent and do not hard-refuse. This is the body-level degrade path used on explicit slash invocation; it lies outside the trigger domain.
+- **d. Everything failed** (non-GitHub hosting, missing lineage) → ask the user. Do not guess.
 
-1. **触发是概率性的**。skill 无确定性调用作为主路径（`/apache-*` 显式斜杠调用
-   仅作兜底逃生口）；description 已按官方建议设计，但任何自然语言触发都不能保证
-   命中。
-2. **规则包可能被非目标路径旁路**。普通会话未触发本 skill 而顺手执行 commit/PR
-   时，规则包不会被读取、规范自检不发生；批准门控是最后背书（一切 push/PR 仍需
-   显式批准，旁路产生的结果也会以提案形态到达用户眼前）。
-3. **kyuubi 无可控的 AGENTS.md 常驻通道**。其 AGENTS.md 是被追踪的 upstream 资产
-   不可修改，本套件灾难护栏无法注入该常驻通道（其既有按名识别远端规则与 skill
-   按 URL 识别冲突时，呈报用户裁决，禁止静默择一）；该仓护栏由规则包置顶节 +
-   结构化门 + 批准门控三层承载。
-4. **陈旧 G 层可能误导跳读者**。冲突裁决序为 [USER] 政策层 > P 层项目事实 >
-   skill 正文 > G 层快照——正文永远权威；但只读到 G 层、未读正文的会话可能拿到
-   过期的通用规则快照。
-5. **软惯例仓的标题漂移仅 90 天时间兜底**。无标题 lint workflow 且无合并改写脚本
-   的仓库，社区标题惯例漂移不引起 CI 工件变化，cache 的事件触发永不命中，只靠
-   `verified` > 90 天的时间触发重挖。
-6. **异机 fresh clone 并存期存在让渡残余**。本机不存在旧项目级 skill 时，Step 0
-   第 0 条让渡检查无可让渡对象；此窗口内靠批准门控背书（一切远端写仍需显式批准）。
-7. **桌面 app 在线是远程指令/批准能力的前提**。Bot Channel 是桌面 ZCode 会话的
-   远程界面而非独立移动执行环境（执行者恒为桌面会话）；桌面会话休眠/退出时，手机
-   侧指令（含批准）不可被处理——环境事实，不做唤醒类设计。
-8. **跨会话定时提醒/事件唤醒不支持**。cron 轮询（CI 完成、review 新评论等会话内
-   提醒）仅在会话存续期内有效，会话结束即失效；跨会话定时提醒无载体，需用户重新
-   发起会话（R1-2A 裁定，2026-10-13）。
+### Read the pack
 
-以上均为计划（v2.5/v2.13-v2.14）与 R1 投票（2026-10-13）明载并接受的残余风险，
-不以进一步设计消除。
+Immediately read `<repo-root>/.zcode/rules/<project>.md` in full — no skimming.
 
-*(Verbatim from aux-docs 诚实限制节, 8-item version synced 2026-10-14; position per R1-7A)*
+- **G layer** — generic kernel rule snapshot (anti-skim redundancy; the skill body is always authoritative over it).
+- **P layer** — the project's CI/CD rule cache.
 
-## 派生层——本仓事实（绝不写死；每条注明取材处）
+On a P-cache hit that has not expired, use the cache directly — no re-collection — and report a one-line source note, e.g. `cache hit · verified <date> · source .zcode/rules/<project>.md`.
 
-**总则**：cache 命中直用；miss 当场按下列取材处现读派生（或整体走「内联挖掘程序」），
-经批准落 cache。**title conventions are repo-specific and sometimes mutually
-exclusive**——禁止把任何仓的形态当作通用默认。
+### Missing pack or cache
 
-1. **合并按钮与保护分支** → 现读 `.asf.yaml`（merge buttons + `protected_branches`
-   段）。
-2. **默认分支** → **双确认**：`.asf.yaml` 保护分支名 + `git symbolic-ref
-   refs/remotes/<upstream>/HEAD`。
-3. **标题规范** → **三重判态**：① 有标题 lint workflow（semantic-PR / pr-title-check
-   类）→ **ci-lint 态**（读 workflow 配置取规则）；② 有合并改写脚本（dev/tools 类
-   目录）→ **merge-tool 态**（读脚本正则与改写行为）；③ 皆无 → **soft-convention
-   态**（`git log --oneline -50 <upstream>/<默认分支>` 标题模式统计 + 项目贡献文档
-   标题节）。三态互斥——把 A 仓形态套进 B 仓是翻车主因。
-4. **issue 关联通道与礼仪** → PR/issue 模板 + 贡献文档（CONTRIBUTING、
-   docs/contributing 类）+ 近期 merged PR 正文样本（closing 关键字使用率统计）。
-5. **PR 模板段落（含 AI 披露段有无）** → 现读 `.github/PULL_REQUEST_TEMPLATE*`，
-   逐段标必填/选填。
-6. **提交前门禁 / CI 细节**（门禁命令、ci-carrier、fork 可跑性、快门禁时长、已知
-   基线噪音）→ 「内联挖掘程序」产出（规则包 pre-commit / ci 节）。
-7. **正式/私密渠道**（邮件列表、讨论区、安全渠道）→ 规则包 routing 节（.asf.yaml
-   notifications + 贡献文档 + SECURITY.md 有无；缺失按 ASF 默认推断并标注
-   "未证实"）。
+A missing pack or cache — new repository, first execution, fresh clone — is a normal state, not an error.
 
-## 内联挖掘程序（首次采集 / 新仓 bootstrap / 失效重挖共用引擎；本文自包含）
+1. First attempt to restore from the personal master copy `~/.zcode/rules/<project>.md` (at most one approval, ≤ 5 minutes).
+2. If still missing, run the Inline Mining Program (below) on the spot — read-only, minutes-level. Use the results for the current task immediately; then, with user approval, write them into the cache for direct use next time. A first execution is simply the "collect and cache" pass, and the task is never blocked by it.
+3. If the user declines persisting the cache, use the results for this run only and ask again on the next miss. There is no persistent suppression state.
+4. **Never guess or borrow another repository's rules — not even partially.** What is forbidden is guessing or borrowing instead of mining; mining itself is the anti-guessing mechanism. Fields that mining cannot determine get a generic default plus a question to the user.
 
-**cache 语义**（P 层三特性）：**非必须**——cache 缺失是正常态而非错误（新仓接入 /
-首次执行 / fresh clone / 被清理）；不依赖它也能工作，缺失时的正确行为是当场在线挖掘
-（本程序，只读、分钟级）再行动，而非拒绝任务或猜测规则。**非静态**——时间
-（`verified` > 90 天）+ 事件（CI 工件有变更）双触发失效重挖，无需人工维护。**有则
-增强**——命中即直用、无须再次采集；操作精确到项目真实门禁，专业性 = 每条可追溯到
-来源工件。
+### Cache invalidation
 
-**输入（全部只读、免批准）**：
+Dual trigger — time plus event. Before judging, run `git fetch <upstream> --prune` (a fetch is an approval-free, read-only operation):
 
-- `.github/workflows/*`（触发器 / jobs / steps 命令 / 矩阵 / permissions / secrets
-  依赖）
-- CI 脚本目录（`tools/`、`dev/`、`build/` 等惯用目录）
-- lint/format 配置（spotless / checkstyle / `.licenserc.yaml` / scalafmt /
-  pre-commit hooks 等）
-- `.asf.yaml`（merge buttons + 保护分支 + notifications）
-- PR/issue 模板（`.github/PULL_REQUEST_TEMPLATE*`、`.github/ISSUE_TEMPLATE/*`）；
-  labeler / dependabot / renovate 配置
-- CONTRIBUTING / 贡献文档
-- git 抽样：`git log --oneline -100 <upstream>/<default>` 标题形态
-- PR 标本：~20 条 open + ~20 条 merged PR 标题（匿名 API 可用）
+- The `verified` header is more than 90 days old; **or**
+- CI artifacts (workflows, lint configs, templates, `.asf.yaml`) have changed since `verified`.
 
-**三步机械推导**（覆盖绝大多数轴；方法已在多个 ASF 仓抽样实战验证）：① `.asf.yaml`
-+ workflow 触发器 → merge-governance / default-branch / ci-carrier / `(#N)` 语义 /
-release-branch-pattern；② 模板 + PR 标本 → issue-link-channel / 模板段清单 / AI
-披露段有无；③ CI steps + 脚本与 lint 配置 → 门禁清单 / 本地测试命令 / label 筛选
-词汇。
+Either condition → pack-level re-mine (discipline under "Invalidation and re-mining discipline").
 
-**派生映射**：workflow 触发器 → ci-carrier 轴 + fork 可跑性（secrets 依赖分析）；
-CI steps 中本地可预跑的命令 → 门禁清单；标题 lint workflow → 标题治理态 + 标题
-规则；测试矩阵（JDK/OS/引擎 profile）→ 本地复现命令 + "本地过 ≠ CI 必绿"提示
-（列出矩阵维度）；PR/issue 模板 → 模板段与筛选面输入；`.asf.yaml` →
-branch-protection 轴；labeler 路径映射 → label 筛选词汇（**必须来自本仓一手清单，
-禁止跨仓继承**）。
+### Conflict resolution order
 
-**产出落盘**（经批准后）——规则包结构（schema-version 1；完整母版见
-`~/.zcode/skills/apache-dev-workflow/templates/rule-pack-template.md`，母版缺失时
-按此骨架落盘）：
+**[USER] policy layer (cannot be overridden; only an explicit user exemption lifts it) > P-layer project facts > skill body (non-[USER] kernel) > G-layer snapshot.**
 
-- 头部：`schema-version: 1` / `kernel-version:`（= 本文 Changelog 当前版本）/
-  `verified: <今天>`（包级失效判据）。
-- **Layer G**（通用规则快照，generated read-only，抗跳读冗余）：g-guardrails +
-  g-kernel 两节，由种子模板机械再生、禁手改；可后补（非必须）。
-- **Layer P**（项目 cache）：轴值头（upstream / default-branch /
-  release-branch-pattern / merge-governance / issue-link-channel / ci-carrier /
-  branch-protection / target-branch-backport / pr-update-style / evidence-types /
-  issue-pr-relation）+ 各节（**guardrails（项目灾难级护栏，置顶）** / title /
-  template / pre-commit / ci / filter / routing / local / misc / manual-research）。
-- 每条 P 层值带一行出处（文件/命令/API + 日期）；挖不出的字段记 `unknown` + 取材
-  尝试说明，**禁止照搬他仓值**。
+- The P layer may only record deviation facts against a [USER] policy and report them to the user; it can never override the policy. "Recent merged PRs in this community mostly skip the close keyword" is a deviation fact — it does not overturn the user's no-PR-without-an-issue policy.
+- When the upstream's own AGENTS.md or templates conflict with the pack, report the conflict to the user for a ruling. Never silently pick one side.
 
-**新包附加步骤（bootstrap）**：镜像个人母本（`cp` 至
-`~/.zcode/rules/<project>.md`）；确认 `/.zcode/` 已 gitignore；[USER] 两规范
-（无 issue 不开 PR + AI 披露）默认写入每个新包，并向用户确认一次适用性。
+### Schema-version downgrade
 
-**失效重挖**（时间 > 90 天，或 CI 工件自 `verified` 后有 git 变更；**判定前先
-`git fetch <upstream> --prune`**）：包级重挖，diff "cache ↔ CI 实际配置"，漂移则
-更新。**重挖纪律**：mining 条目更新；**manual 考证条目**（软惯例 / 历史反模式 /
-运营规则——CI 工件派生不出的）收在 manual-research 独立子节，**重挖永不覆写**，
-存疑呈报；**guardrails 节中标注〔manual〕的摘要行重挖时不可删**（灾难级规则双写
-形态：guardrails 摘要 + manual-research 全记录 + 交叉引用）。
+A pack whose `schema-version` is unrecognized is treated as missing (follow "Missing pack or cache"). Use the re-mined results in memory only — never overwrite the original pack — and report the situation to the user. This prevents cross-machine version ping-pong.
 
-**实战改进注记（2026-10-14 场测修订——B3 seatunnel 首采 + B4 dolphinscheduler 闭卷考合并）**：
-1. 输入清单补充：`.github/actions/*` 复合 action（常藏 spotless/license 等门禁实现，
-   仅看 workflows/*.yml 会漏）；项目官网 contribute/subscribe/security 三页（社区
-   礼仪与安全渠道的最强成文证据，比 PR 标本更权威）。
-2. PR 标本取法（API 端点写明）：`pulls?state=closed&per_page=N` 拉回后过滤
-   `merged_at != null`（closed≠merged）；open 标本仅在 merge-governance=soft-convention
-   态才有必要（ci-lint 态下 open 标题也被强制合规，贡献为零）。
-3. 匿名 API 限流：search 接口 10 次/分钟且失败时可能返回空 body 而非 JSON 错误——
-   label/issue 计数优先用 REST 端点 + URL 全编码查询，重试间隔 ≥7s。
-4. 推导线补充：.asf.yaml 保护分支 `contexts` 里的检查名（如 "Title Validator"）→
-   反查 workflows/ 与 `.github/*bot*.yml` 机器人配置定位门禁实现（门禁名与实现
-   常分居两处工件）。
-5. 证据强度排序提示：贡献文档的成文规定 > PR/commit 标本统计（issue 通道等字段
-   文档常给出三分之二证据）。
-6. 计时型字段（快门禁时长/矩阵规模）：允许继承上一次 verified 值并标注〔继承〕，
-   不强制重测（重测需 run 标本采样，超出常规输入面）。
-7. vestigial/失修配置（bot 配置拼写错误、正则失配）：入 manual-research 注记
-   "勿依赖"，不作为派生依据。
-8. 污染自检（bootstrap 后）：检查项用语义级而非工具名——如"PR 标题节是否出现
-   无 issue 号的 `[Type][Module]`"，而非 grep 工具名（目标仓自身合法使用同名
-   工具会造成误报）。
+## Hardcoded Tiers
 
+Only the three tiers below are hardcoded, and every rule carries its tier tag as its confidence basis.
 
-## 规范自检与证据链卡（push/PR 前门）
+### [USER] User Policy (stricter than community norms)
 
-**时点**：用户请求"开 PR 前对照规范查一遍"类；或作为 push / PR 批准卡的随卡材料
-（diff 概要、证据链卡鼓励随卡呈报）。操作序：本地改码与门禁预跑 → 自检卡 →
-commit（批准门控）→ push 批准卡 → fork CI 五态解读 → 结构化门 + PR 批准卡。
+#### Approval gating — literal full interception of every git/gh write
 
-**三列证据链卡**（规则 + 来源 + 验证证据；**禁止"✅ 已检查"式无来源断言**）。
-检查行至少覆盖：
+- **Scope.** Every git/gh write operation requires explicit approval from the user in the current session: local commits, pushes, PR/issue/comment writes, persisting the rule pack cache, and CI reruns are all included ("字面全拦"). Only read-only operations are approval-free (the set is listed below).
+- **Form of approval.** An explicit instruction from the user in the current session, or an explicit reply to an approval card. Instruction coverage is read literally and interpreted narrowly when ambiguous — "提交一下" ("commit it") covers only the local commit; push and PR each get their own approval card.
+- **Approval card — five elements** (one unified template across all repositories):
+  1. The verbatim command text awaiting approval.
+  2. A one-sentence risk statement.
+  3. A task number: `issue #N` when an issue exists; otherwise a task-log entry ID such as `<branch-or-topic>-<date>` (ops, dry-run, and synthetic tasks may use their own identifiers — the card structure is unchanged).
+  4. At least two alternative options.
+  5. No approval within 30 minutes → park: suspend, keep the summary, resumable at any time, no automatic retry.
+- **Pressure valve — "approve-all-for-this-round" ("这轮都批").** A conversational, session-scoped ranged authorization, e.g. the user instructing "items 2 and 3 are fixed — push them". Within the authorized range, stop asking per item, but log every remote write to the task log individually. Remote writes never enter a permanently approval-free state.
+- **The gate recognizes the session, not the origin.** An approval arriving through a user-configured Bot Channel (never hardcode the channel name) is an in-session approval. The executor is always the desktop session; the Bot Channel is its remote interface, and the desktop app being online is a precondition (see Honest Limitations).
+- **Waiting semantics.** Event waits — CI completion, review arrival — have no timeout. Only approval waits use the 30-minute park.
+- **Approval-free read-only set:** `git fetch <upstream> --prune`, gh read commands, anonymous API calls, and every input operation of the Inline Mining Program.
 
-| 检查项 | 规则（来源=规则包条目） | 验证证据 |
+#### No upstream PR without an issue — zero exceptions
+
+Every PR starts from an issue, including typo, doc, and follow-up changes. For a follow-up whose original issue is already closed, create or reopen an issue that references the original PR, and start from there. The linking channel — a `close #N` keyword in the body versus an issue number in the title — is dispatched by the rule pack's `issue-link-channel` axis; this clause deliberately does not mandate a channel. Community deviation facts recorded in the P layer are report-only and are never applied.
+
+#### AI disclosure
+
+Voluntarily append an `Assisted-by: <model:version>` line to the PR body (e.g. `Assisted-by: ZCode:GLM-5.3`). The rule pack's template section records whether the project template has an AI section: fill that section when it exists; otherwise append the line voluntarily. Never list the AI as a co-author, and never place AI self-references in source code, comments, titles, or commit messages (ASF Generative Tooling Guidance framework).
+
+### [MECH] Engine Mechanics (GitHub/gh behavior, repo-independent)
+
+**Squash merge semantics.** In squash-enabled repositories (the mainstream ASF form), the PR title and body become the merge commit message — when the scope grows, update the title and body in sync. The individual commit messages inside the branch never enter final history.
+
+**The `(#N)` suffix is the PR number.** The suffix GitHub auto-appends on squash merge (including the backport double-suffix scenario) is the PR number, not the issue number. A human never writes it — hand-writing it forges engine behavior. The repository's specific title format comes from the rule pack's title section, but "never hand-write `(#N)`" holds across all repositories.
+
+**Closing keywords.** Only `close`/`fix`/`resolve #N` in the PR **body** can auto-close an issue; GitHub does not parse numbers in the title. When auto-closing is required, the link must live in the body — or in the equivalent channel dispatched by the pack's axis. Title and body are not interchangeable.
+
+**Fork = staging area.** The personal fork is the only push target (the mirror of the [ASF] PR-first rule). Fork-side CI forms vary by repository: a push may trigger CI directly, only an upstream PR may trigger it, or an intra-fork PR may be the only route. Always check the rule pack's `ci-carrier` axis before opening an intra-fork PR — the wrong track creates an entity with no CI value that then needs manual cleanup.
+
+**CI investigation pattern.**
+
+```bash
+gh run list  -R <repo> -b <branch> -L 5
+gh run view <run-id> -R <repo> --log-failed    # add -j <job-id> to drill into one job
+```
+
+Classify each failed job into exactly one of five states — one line per job: state + basis + action. Never assert a state without a basis.
+
+- **Real bug** — the failure localizes to a module or test this diff touches → back to the fix loop.
+- **Environment** — infrastructure / network / dependency-fetch failure → observe or rerun.
+- **Flaky** — the judging procedure is weak, so downgrade the wording: "suspected flaky → request rerun approval to verify" (revisit upgrading only after samples accumulate).
+- **Not run** (first contribution awaiting the approval chain) — recognize the waiting status → run the unlock chain: draft the approval-request comment and issue an approval card.
+- **Compliance gate** (lint / license class) — a rerun cannot save it → fix the code or add the missing headers, back to the gate checklist.
+
+A rerun is a write operation: issue an approval card (it may fall under "approve-all-for-this-round").
+
+### [ASF] Foundation-Level Policy
+
+**PR-first contribution flow.** An individual never pushes the official repository (`github.com/apache/<project>`, whatever the remote happens to be named). Every change goes through PR + review.
+
+**ALv2.** New files carry the Apache-2.0 license header, copied from any existing file in the repository. License-check tools may scan gitignored local files — do not place private files in the repository root.
+
+**ICLA policy framework.** An occasional PR needs no ICLA (ALv2 clause 5). Sign before sustained substantial contributions or a committer nomination — personal email, matching the git config email.
+
+**Issue etiquette defaults.** Search before creating; claim by comment ("taking this"); non-committers cannot self-assign. When the repository has more specific etiquette, the rule pack governs.
+
+**Security vulnerability re-routing (hard branch).** On discovering a security vulnerability (RCE / authentication-bypass class), abort all public process at once: create no issue, open no PR, and describe no vulnerability details in public comments. Route through the private channel recorded in the rule pack's routing section. If the pack is missing, infer the ASF default private channel and mark it "unverified" — a wrong address means a lost vulnerability report, an asymmetric risk (pending verification closure).
+
+### Hard Guardrails (standard text, identical across all repositories)
+
+Disaster-level rules are backstopped in layers: the rule pack's guardrails section (placed first) → the structured gate (see "Pre-Submit Compliance Self-Check") → the repository-local AGENTS.md pointer, if present → approval gating as the final backstop.
+
+- NEVER push to the official Apache remote (`github.com/apache/<project>`, whatever it is named). PRs only — the personal fork is the only staging area.
+- NEVER open an upstream PR without a linked issue — zero exceptions: typo, doc, and follow-up changes all start from an issue; if the original issue is closed, create or reopen an issue referencing the original PR. The linking channel follows the rule pack axis.
+- NEVER hand-write the `(#N)` title suffix — GitHub squash auto-appends the PR number.
+- NEVER force-push shared branches (force-pushing a PR branch you have coordinated on is acceptable).
+- NEVER commit credentials, IDE files, build artifacts, logs, or other private artifacts; new files carry the Apache-2.0 header.
+- NO git/gh write operation without explicit approval in the current session (approval card with its five elements; "approve-all-for-this-round" is the session-scoped pressure valve; remote writes are never permanently approval-free).
+
+## Honest Limitations (Accepted Residual Risks)
+
+This suite relies on probabilistic triggering and local file reads. The residual risks below are known and accepted; they are not to be designed away.
+
+1. **Triggering is probabilistic.** The skill has no deterministic invocation as its main path (explicit `/apache-*` slash calls exist only as a fallback escape hatch). The description follows the official design advice, but no natural-language trigger can be guaranteed to hit.
+2. **The rule pack can be bypassed by non-target paths.** A session that never triggers this skill may still casually commit or open a PR: the pack goes unread and the compliance self-check does not run. Approval gating is the final backstop — every push and PR still needs explicit approval, and results produced on the bypass still reach the user as proposals.
+3. **kyuubi has no controllable AGENTS.md resident channel.** Its AGENTS.md is a tracked upstream asset that cannot be modified, so this suite's disaster guardrails cannot be injected into that resident channel. When its existing identify-the-remote-by-name rule conflicts with this skill's identify-by-URL rule, report to the user for a ruling — never silently pick one. That repository's guardrails are carried by three layers: the pack's guardrails section, the structured gate, and approval gating.
+4. **A stale G layer can mislead a skimmer.** The conflict order keeps the skill body authoritative over the G-layer snapshot, but a session that reads only the G layer may walk away with an outdated generic rule snapshot.
+5. **Soft-convention repositories have only the 90-day time backstop against title drift.** In a repository with no title lint workflow and no merge-rewrite script, community title drift changes no CI artifacts, so the event trigger never fires; only the `verified` > 90-day time trigger re-mines.
+6. **The cross-machine fresh-clone coexistence window leaves deferral residue.** When no legacy project-level skill exists on this machine, the Step 0 deference check has nothing to defer to; approval gating backs that window (every remote write still needs explicit approval).
+7. **A desktop app online is the precondition for remote instruction and approval capability.** The Bot Channel is the desktop ZCode session's remote interface, not an independent mobile execution environment; the executor is always the desktop session. When the desktop session sleeps or exits, phone-side instructions — approvals included — cannot be processed. This is an environmental fact; there is no wake-up design.
+8. **Cross-session scheduled reminders and event wake-up are not supported.** Cron-style polling (CI completion, new review comments — in-session reminders) lives only as long as the session does. There is no carrier for cross-session reminders; the user must start a new session.
+
+## Derived Layer: Repository Facts (Never Hardcoded)
+
+General rule: on a cache hit, use it directly. On a miss, derive on the spot from the sources below — or run the whole Inline Mining Program — and persist to the cache with approval. **Title conventions are repo-specific and sometimes mutually exclusive**: never treat any one repository's form as the generic default.
+
+1. **Merge buttons and protected branches** → read `.asf.yaml` (merge buttons + `protected_branches` sections).
+2. **Default branch** → double confirmation: the `.asf.yaml` protected branch name plus `git symbolic-ref refs/remotes/<upstream>/HEAD`.
+3. **Title conventions** → three mutually exclusive states:
+   - *ci-lint state* — a title lint workflow exists (semantic-PR / pr-title-check class) → read the workflow config for the rules.
+   - *merge-tool state* — a merge rewrite script exists (dev/tools-style directories) → read the script's regex and rewrite behavior.
+   - *soft-convention state* — neither of the above → title pattern statistics from `git log --oneline -50 <upstream>/<default>` plus the title section of the project's contribution docs.
+
+   Applying repository A's form to repository B is the classic failure mode.
+4. **Issue linking channel and etiquette** → PR/issue templates + contribution docs (CONTRIBUTING, docs/contributing) + recent merged PR body samples (closing-keyword usage statistics).
+5. **PR template sections (including whether an AI disclosure section exists)** → read `.github/PULL_REQUEST_TEMPLATE*` and mark each section required or optional.
+6. **Pre-submit gates and CI details** — gate commands, ci-carrier, fork runnability, fast-gate duration, known baseline noise → Inline Mining Program output (the rule pack's pre-commit / ci sections).
+7. **Official and private channels** — mailing lists, discussion areas, security channel → the rule pack's routing section (`.asf.yaml` notifications + contribution docs + presence of SECURITY.md; when missing, infer the ASF defaults and mark them "unverified").
+
+## Inline Mining Program (Self-Contained)
+
+One shared engine for first collection, new-repository bootstrap, and invalidation re-mining.
+
+### Cache semantics (three P-layer properties)
+
+- **Non-mandatory.** A missing cache is a normal state — new repository onboarding, first execution, fresh clone, cleanup — not an error. The program works without a cache: on a miss, mine online on the spot (this program, read-only, minutes-level) and then act. Never refuse the task and never guess rules.
+- **Non-static.** Invalidation re-mines on a dual trigger — time (`verified` > 90 days) and event (CI artifacts changed) — with no manual maintenance.
+- **Enhancing when present.** A hit is used directly, with no re-collection; operations are precise to the project's real gates. Professionalism equals every entry being traceable to a source artifact.
+
+### Inputs (all read-only, approval-free)
+
+- `.github/workflows/*` — triggers, jobs, step commands, matrix, permissions, secrets dependencies
+- `.github/actions/*` — composite actions, which often hide spotless/license gate implementations that `workflows/*.yml` alone would miss
+- CI script directories (`tools/`, `dev/`, `build/`, and similar conventions)
+- lint/format configs — spotless, checkstyle, `.licenserc.yaml`, scalafmt, pre-commit hooks, and the like
+- `.asf.yaml` — merge buttons, protected branches, notifications
+- PR/issue templates (`.github/PULL_REQUEST_TEMPLATE*`, `.github/ISSUE_TEMPLATE/*`); labeler / dependabot / renovate configs
+- CONTRIBUTING and the other contribution docs
+- The project website's contribute / subscribe / security pages — the strongest written evidence for community etiquette and security channels, more authoritative than PR samples
+- git sampling: `git log --oneline -100 <upstream>/<default>` title forms
+- PR samples: ~20 open + ~20 merged PR titles (the anonymous API works)
+
+### Read CI artifacts at the pinned upstream ref
+
+The local clone may sit thousands of commits behind upstream. Read CI artifacts (backend.yml and the like) against the upstream's latest ref and record the base SHA:
+
+```bash
+git show <upstream>/<branch>:<path>
+```
+
+Skipping this records matrices and trigger surfaces as stale facts.
+
+### Three-step mechanical derivation
+
+Covers the vast majority of axes (the method is field-validated across multiple ASF repositories):
+
+1. `.asf.yaml` + workflow triggers → merge-governance / default-branch / ci-carrier / `(#N)` semantics / release-branch-pattern
+2. Templates + PR samples → issue-link-channel / template section list / presence of an AI disclosure section
+3. CI steps + scripts + lint configs → gate checklist / local test commands / label filter vocabulary
+
+### Derivation mapping
+
+- Workflow triggers → ci-carrier axis + fork runnability (secrets-dependency analysis)
+- Locally pre-runnable commands found in CI steps → gate checklist
+- Title lint workflow → title governance state + title rules
+- Test matrix (JDK / OS / engine profiles) → local reproduction commands + a "local pass ≠ CI green" reminder that lists the matrix dimensions
+- PR/issue templates → template sections and filter inputs
+- `.asf.yaml` → branch-protection axis
+- Labeler path mappings → label filter vocabulary — must come from this repository's first-hand list; cross-repo inheritance is forbidden
+- Check names in `.asf.yaml` protected-branch `contexts` (e.g. "Title Validator") → trace back through `workflows/` and `.github/*bot*.yml` bot configs to locate the gate's implementation — a gate's name and its implementation often live in two different artifacts
+
+### PR sampling and API discipline
+
+- Fetch merged samples via `pulls?state=closed&per_page=N`, then filter `merged_at != null` (closed ≠ merged). Open samples are only worth fetching when merge-governance is soft-convention — under ci-lint, open titles are forcibly compliant too, so they contribute nothing as evidence.
+- Anonymous API rate limits: the search endpoint allows 10 requests per minute and, on failure, may return an empty body instead of a JSON error. Prefer REST endpoints with fully URL-encoded queries for label and issue counts, with a retry interval of at least 7 seconds.
+
+### Evidence strength and special fields
+
+- Evidence strength ordering: written rules in the contribution docs > PR/commit sample statistics — the docs often deliver two-thirds of the evidence for fields like the issue channel.
+- Timing-type fields (fast-gate duration, matrix scale) may inherit the last verified value, marked 〔继承〕 (inherited) — re-measuring requires run-sample collection, which lies beyond the normal input surface.
+- Vestigial or broken configs (bot config typos, regex mismatches) go into manual-research with a "do not rely" note; they are never a derivation basis.
+
+### Output: rule pack structure (after approval)
+
+Schema-version 1. The full master template lives at `~/.zcode/skills/apache-dev-workflow/templates/rule-pack-template.md`; when the master is missing, persist per this skeleton.
+
+Header fields:
+
+- `schema-version: 1`
+- `kernel-version:` — this kernel's current version, `1.0-draft-2026-10-14`
+- `verified: <today>` — the pack-level invalidation criterion
+
+Layers:
+
+- **Layer G** — generic rule snapshot, generated read-only, anti-skim redundancy: the g-guardrails and g-kernel sections, mechanically regenerated from the seed template with hand-editing forbidden; may be backfilled later (not mandatory).
+- **Layer P** — the project cache: the axis-value header (upstream / default-branch / release-branch-pattern / merge-governance / issue-link-channel / ci-carrier / branch-protection / target-branch-backport / pr-update-style / evidence-types / issue-pr-relation) plus the sections — **guardrails (the project's disaster-level guardrails, placed first)** / title / template / pre-commit / ci / filter / routing / local / misc / manual-research.
+
+Every P-layer value carries a one-line provenance (file / command / API + date). Record fields mining could not determine as `unknown`, with a note on what was tried — never copy another repository's value.
+
+### New-pack bootstrap
+
+1. Mirror the personal master copy (`cp` to `~/.zcode/rules/<project>.md`).
+2. Confirm `/.zcode/` is gitignored.
+3. Write the two [USER] norms — no PR without an issue, and AI disclosure — into every new pack by default, and confirm their applicability with the user once.
+
+### Invalidation and re-mining discipline
+
+Triggers: time > 90 days, or CI artifacts changed since `verified` per git — and run `git fetch <upstream> --prune` before judging. Re-mine at pack level: diff "cache ↔ actual CI config" and update on drift. The discipline:
+
+- Mining entries: update them.
+- Manual-research entries — soft conventions, historical anti-patterns, operational rules, anything not derivable from CI artifacts — live in their own manual-research subsection; re-mining never overwrites them; report when in doubt.
+- Summary lines marked 〔manual〕 inside the guardrails section must survive re-mining. Disaster-level rules are dual-written: guardrails summary + manual-research full record + cross-reference.
+
+### Lazy mining semantics
+
+When the pack is missing, on-the-spot mining may be deferred until just before a format-sensitive operation — push, PR, or title assembly. A purely local, draft-type commit is not blocked by the missing pack and must not be refused; but tell the user explicitly: "the rule pack is missing; it will be collected before any push or PR."
+
+### Post-mining self-checks
+
+- **Pollution self-check (after bootstrap).** Phrase the checks at the semantic level, not by tool name — "does the PR title section show a `[Type][Module]` without an issue number", not a grep for a tool name. The target repository's own legitimate use of a same-named tool causes false positives.
+- **Empty-source preference section.** When the conversation contains no extractable preference statements, create the preference section with `unknown` placeholders and prompt the user to state preferences. Never fabricate preferences and never block the flow on it.
+
+## Pre-Submit Compliance Self-Check and Evidence Chain Card
+
+**When it runs:** when the user asks to check everything against the norms before opening a PR, and as the accompanying material for every push / PR approval card (a diff summary and the evidence chain card are encouraged to ride along with the card).
+
+**Operation sequence:** local code changes and gate pre-runs → self-check card → commit (approval-gated) → push approval card → fork CI five-state interpretation → structured gate + PR approval card.
+
+**Environment precheck (before gate pre-runs).** Compare the local JDK / toolchain against the rule pack's local matrix. When none of the machine's versions is workable (e.g. the project targets a source level the local JDKs cannot build), either switch to a workable JDK or downgrade the item to an explicitly reported gap — never silently skip.
+
+**Commit procedure.** Stage files by explicit path — never `git add -A`, never `git add .`. When the working branch is based on an upstream base, locally added gitignore enhancements that upstream does not yet have do not apply, so private workspace files (planning docs, rule pack caches) sit untracked inside the add surface.
+
+### Evidence chain card (three columns)
+
+Rule + source + verification evidence. Source-less assertions in the style of "✅ checked" are forbidden. At minimum, cover:
+
+| Check | Rule (source = rule pack entry) | Verification evidence |
 |---|---|---|
-| 标题形态 | title 节缓存条目（带原始出处） | 实际标题 + 类型词/组件词命中判定 + 不确定则省略的取舍说明 |
-| issue 关联 | [USER] 无 issue 不开 PR + issue-link-channel 轴 | issue 存在性 + 实际关联方式（如正文 close 行原文） |
-| PR 正文段 | template 节（模板文件出处） | 逐段有无 |
-| AI 披露 | [USER] 披露政策 + template 节段有无 | 正文实际 `Assisted-by:` 行 |
-| 门禁清单 | pre-commit 节逐条（各带 CI 工件出处） | 本地实跑命令 + 结果摘要（未跑=差距项，不得标绿） |
-| base 分支 | 默认分支轴值（双确认来源） | 实际 `--base` 值 |
-| 硬护栏 | g-guardrails | 新文件 ALv2 头检查 + 无凭据/IDE 文件/构建产物/日志的清单证据 |
+| Title form | title-section cache entry (with original provenance) | the actual title + type-word / component-word hit verdict + the trade-off note when a word was omitted as uncertain |
+| Issue link | [USER] no-PR-without-issue + issue-link-channel axis | issue existence + the actual linking method (e.g. the verbatim close line) |
+| PR body sections | template section (template file provenance) | presence, section by section |
+| AI disclosure | [USER] disclosure policy + template-section presence | the actual `Assisted-by:` line in the body |
+| Gate checklist | every pre-commit entry (each with its CI-artifact provenance) | locally executed commands + result summary (not run = a gap item, never marked green) |
+| Base branch | default-branch axis value (double-confirmation provenance) | the actual `--base` value |
+| Hard guardrails | g-guardrails | ALv2 header check on new files + itemized evidence of no credentials / IDE files / build artifacts / logs |
 
-**夹带拦截**：diff 中与 issue 无关的顺手改动（typo / 无关重构）→ 拒绝混入，建议
-单独 issue + PR（[USER] 不豁免：typo 也要 issue）。
+### Hitchhiker changes
 
-**对抗性自审**：以 fresh-context 视角复查自己的 diff（换视角重读，不带"我刚写的"
-假设），发现项附进卡片。
+Refuse to mix drive-by changes unrelated to the issue (typos, unrelated refactors) into the diff; suggest a separate issue + PR instead. [USER] grants no exemption here either — a typo needs an issue too.
 
-**结构化门（`gh pr create` 前强制）**：呈报批准卡时必须**复述所用标题格式及其
-来源**（如："标题格式 <格式>，来源：规则包 title 节，原始出处 <工件>"）——自证
-读了规则源；不复述不得创建。
+### Adversarial self-review
 
-## Changelog
+Re-examine your own diff from a fresh-context perspective: re-read it with a changed viewpoint, without "I just wrote this" assumptions, and append any findings to the card.
 
-- **1.0-draft-2026-10-14**：初稿（Phase A Wave2 · A1 交付物）。内核构成：Step 0
-  七条加载协议（让渡前置检查 / 会话内去重 / 上游识别链 a-d / 读包 / 缺失处理 /
-  失效判定 / 冲突裁决序 / schema 降级）+ 写死层三级（[USER] / [MECH] / [ASF]）+
-  硬护栏标准文案 + 派生层取材映射 + 内联挖掘程序（自包含，统一惰性流）+ 证据链卡
-  与结构化门 + 诚实限制节（单一文案源逐字内联，位置紧随 guardrails 后）。R1 投票
-  12 项全部生效（含 R1-7 限制节位置、R1-12 批准门控字面全拦 + "这轮都批"减压阀、
-  R1-3 flaky 降级措辞、R1-8 routing 未证实标注、A3 附议〔manual〕摘要行保护）。
-  **规则包 `kernel-version:` 头回填本版本号（1.0-draft-2026-10-14）。**
+### Structured gate (mandatory before `gh pr create`)
 
-### B5 干跑修订（2026-10-14 实测回写）
-1. **add 一律显式文件路径，禁 `git add -A` / `git add .`**——工作分支基于
-   upstream 基点时，本地未上游化的 gitignore 增强不生效，工作区私件（计划文档/
-   规则包缓存）以未跟踪态暴露在 add 面（B5 实测踩中）。
-2. **阶段 3 增环境前置检查**：JDK/工具链与规则包 §local 矩阵对照——本机可用
-   版本都不匹配（如项目 source 11 而本机仅 8/21，8 编不过、21 崩旧版 spotless 的
-   javac 内部 API）时：切换可用 JDK 或降级为差距项显式呈报，不得静默跳过。
-3. **挖掘铁律（CI 工件直读）**：本地克隆可能落后 upstream 数千提交——backend.yml
-   等 CI 工件直读须对照 upstream 最新引用（`git show <upstream>/<branch>:<path>`）
-   并记基点 SHA，否则矩阵/触发面会记成过期事实（B5 实测：矩阵实为 11/17，旧包记
-   8/11 即此因）。
-4. **阶段 0.5 偏好节空源分支**：对话无可提取偏好陈述时以 unknown 占位建节并提示
-   用户陈述，不得虚构偏好或阻塞流程。
-5. **批准卡任务号允许非 issue 标识**（干跑/运维/合成任务场景，如 "B5-dryrun"），
-   卡结构不变。
+When presenting the approval card, restate the title format used and its source — for example: "title format <format>, source: rule pack title section, original provenance <artifact>". This self-certifies that the rule source was actually read. No restatement, no creation.
