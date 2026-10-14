@@ -26,7 +26,12 @@ seatunnel 仓 `docs/plan/skill-suite-validation.md`（DoD-1）。
 ## 运行
 
 ```bash
-./tests/b4-matrix.sh zcode|claude|kimi [格号...]
+./tests/run-trigger-matrix.sh zcode|claude|kimi [格号...]
 ```
+
+工作区与二进制路径默认取仓库根的相对位置（格 5 的 fresh clone 缺失时自动浅克隆到
+`.work/fresh-pulsar`，格 7 的非 git 目录自动建于 `tests/fixtures/plain-dir`），
+可用环境变量覆盖（`KYUUBI_DIR`/`SEATUNNEL_DIR`/`FRESH_DIR`/`NONASF_DIR`/
+`NONGIT_DIR`/`CLAUDE_BIN`/`KIMI_BIN`/`ZCODE_BIN`/`RUN_TIMEOUT`），详见脚本头注。
 
 输出：`tests/out/<env>/<格号>.log`。结果汇总记录于 `docs/results/`。

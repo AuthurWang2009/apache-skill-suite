@@ -52,10 +52,10 @@ cd apache-skill-suite
 
 ## B4 触发矩阵验证
 
-`tests/b4-matrix.sh` 以无头只读模式（三环境统一 plan mode）复跑 7 格触发矩阵：
+`tests/run-trigger-matrix.sh` 以无头只读模式（三环境统一 plan mode）复跑 7 格触发矩阵：
 
 ```bash
-./tests/b4-matrix.sh zcode    # 或 claude / kimi
+./tests/run-trigger-matrix.sh zcode    # 或 claude / kimi
 ```
 
 矩阵定义与判定标准见 `docs/b4-matrix.md`，历次结果见 `docs/results/`（首份：`2026-10-14-cross-env.md`，claude 7/7、kimi 带 skill 6+1PARTIAL、zcode 发现级通过）。
