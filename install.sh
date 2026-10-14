@@ -62,18 +62,20 @@ for target in "${TARGET_LIST[@]}"; do
     [[ -d "$src" ]] || { echo "Missing source: $src" >&2; exit 1; }
     if [[ "$MODE" == "symlink" ]]; then
       # keep side-car backups (*.bak*) — they carry the user's migration history
-      for bak in "$dest"/*.bak*; do [[ -e "$bak" ]] && mv "$bak" "$dest_parent/.keep-$(basename "$bak")"; done
+      tmpkeep="$(mktemp -d)"
+      find "$dest" -maxdepth 1 -name '*.bak*' -exec mv {} "$tmpkeep/" \; 2>/dev/null || true
       rm -rf "$dest"
       ln -s "$src" "$dest"
-      for keep in "$dest_parent"/.keep-*.bak*; do [[ -e "$keep" ]] && mv "$keep" "$dest/$(basename "$keep" | sed 's/^\.keep-//')"; done
+      find "$tmpkeep" -maxdepth 1 -name '*.bak*' -exec mv {} "$dest/" \; 2>/dev/null || true
+      rmdir "$tmpkeep" 2>/dev/null || true
       echo "[ $target ] symlinked $skill -> $src"
     else
-      for bak in "$dest"/*.bak*; do [[ -e "$bak" ]] && cp "$bak" "$REPO_ROOT/.tmp-bak-$skill-$RANDOM" ; done
+      tmpkeep="$(mktemp -d)"
+      find "$dest" -maxdepth 1 -name '*.bak*' -exec mv {} "$tmpkeep/" \; 2>/dev/null || true
       rm -rf "$dest"
       cp -R "$src" "$dest"
-      for tmpbak in "$REPO_ROOT"/.tmp-bak-$skill-*; do
-        [[ -e "$tmpbak" ]] && mv "$tmpbak" "$dest/$(basename "$tmpbak" | sed "s/^\.tmp-bak-$skill-//")"
-      done
+      find "$tmpkeep" -maxdepth 1 -name '*.bak*' -exec mv {} "$dest/" \; 2>/dev/null || true
+      rmdir "$tmpkeep" 2>/dev/null || true
       echo "[ $target ] copied     $skill"
     fi
   done
